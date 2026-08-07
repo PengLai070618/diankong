@@ -18,11 +18,16 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "tim.h"
+#include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "pwm.h"
+#include "vofa.h"
+#include"uart.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -86,8 +91,19 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_TIM2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+Servo_SetAngle(90);
+printf("UART Initialized!\r\n");
+// 测试 VOFA+ 数据发送（发两个浮点数）
+float testData[2] = {1.23, 4.56};
+Vofa_JustFloat_Send(testData, 2);
 
+// 让舵机转到 90°
+Servo_SetAngle(90);
+/* USER CODE END 2 */
   /* USER CODE END 2 */
 
   /* Infinite loop */
