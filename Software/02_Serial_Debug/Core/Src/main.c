@@ -102,9 +102,6 @@ HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 HAL_UART_Receive_IT(&huart1, &rx_buffer, 1);
 Servo_SetAngle(90);//初始90度
 printf("UART Initialized!\r\n");
-// 发两个浮点数测试看看
-float testData[2] = {1.23, 4.56};
-Vofa_JustFloat_Send(testData, 2);
 
   /* USER CODE END 2 */
 
@@ -163,7 +160,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
-        /* 判断是否收到换行符（\n 或 \r），表示一帧结束 */
+        /* 判断是否收到换行符，表示一帧结束 */
         if (rx_buffer == '\n' || rx_buffer == '\r')
         {
             if (str_index > 0)
@@ -171,11 +168,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 angle_str[str_index] = '\0';          // 添加字符串结束符
                 int angle = atoi(angle_str);          // 字符串转整数
 
-                /* 限制角度范围，避免损坏舵机 */
+                /* 限制角度范围，避免损坏 */
                 if (angle >= 0 && angle <= 180)
                 {
                     Servo_SetAngle(angle);
                     printf("Target Angle: %d\r\n", angle);  // 打印回显，方便调试
+                    float currentAngle = (float)angle;
+                    // 计算对应的脉宽值（和 Servo_SetAngle 里的公式保持一致）
+                    float currentPulse = 500.0f + angle * 2000.0f / 180.0f;
+                    float data[2] = {currentAngle, currentPulse};
+                    Vofa_JustFloat_Send(data, 2);  // 发送当前角度和脉宽值
                 }
                 str_index = 0;                         // 重置索引，准备接收下一帧
             }
@@ -189,7 +191,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
             }
         }
 
-        /* 重新开启接收中断，准备接收下一个字节 */
         HAL_UART_Receive_IT(&huart1, &rx_buffer, 1);
     }
 }
