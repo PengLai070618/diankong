@@ -28,6 +28,8 @@
 #include "vofa.h"
 #include"uart.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,7 +50,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint8_t rx_buffer;          // 串口接收单字节缓存
+char angle_str[8];          // 存储角度字符串
+uint8_t str_index = 0;      // 字符串索引
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -95,6 +99,7 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+HAL_UART_Receive_IT(&huart1, &rx_buffer, 1);
 Servo_SetAngle(90);//初始90度
 printf("UART Initialized!\r\n");
 // 发两个浮点数测试看看
@@ -108,21 +113,7 @@ Vofa_JustFloat_Send(testData, 2);
   while (1)
   {
     /* USER CODE END WHILE */
-    //转起来
-    Servo_SetAngle(0);
-    HAL_Delay(1000);
     
-    Servo_SetAngle(90);
-    HAL_Delay(1000);
-    
-    Servo_SetAngle(180);
-    HAL_Delay(1000);
-     // 发送实时数据
-    float currentAngle = 90.0;   // 实际值
-    float currentDuty = 1500.0;  // 实际脉宽值
-    float data[2] = {currentAngle, currentDuty};
-    Vofa_JustFloat_Send(data, 2);
-
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -168,7 +159,40 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        /* 判断是否收到换行符（\n 或 \r），表示一帧结束 */
+        if (rx_buffer == '\n' || rx_buffer == '\r')
+        {
+            if (str_index > 0)
+            {
+                angle_str[str_index] = '\0';          // 添加字符串结束符
+                int angle = atoi(angle_str);          // 字符串转整数
 
+                /* 限制角度范围，避免损坏舵机 */
+                if (angle >= 0 && angle <= 180)
+                {
+                    Servo_SetAngle(angle);
+                    printf("Target Angle: %d\r\n", angle);  // 打印回显，方便调试
+                }
+                str_index = 0;                         // 重置索引，准备接收下一帧
+            }
+        }
+        else
+        {
+            /* 存储有效字符，防止数组越界 */
+            if (str_index < 7)
+            {
+                angle_str[str_index++] = rx_buffer;
+            }
+        }
+
+        /* 重新开启接收中断，准备接收下一个字节 */
+        HAL_UART_Receive_IT(&huart1, &rx_buffer, 1);
+    }
+}
 /* USER CODE END 4 */
 
 /**
