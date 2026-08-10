@@ -24,7 +24,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdio.h"  // 用于printf重定向
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,6 +56,19 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/* ========== 定义主从模式切换宏 ========== */
+// 烧录主机板时，取消下面这行的注释
+// #define MASTER
+
+// 烧录从机板时，取消下面这行的注释
+#define SLAVE
+
+/* ========== 包含自定义头文件 ========== */
+#include "can.h"
+
+/* ========== 全局变量 ========== */
+uint8_t last_key_state = 0;  // 用于按键边沿检测（防误触发）
 
 /* USER CODE END 0 */
 
@@ -92,15 +105,78 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  /* USER CODE END 2 */
+/* 1. 调用CAN自定义初始化（启动+过滤器+中断） */
+CAN_Init();
 
+/* 2. 打印启动信息（通过串口） */
+printf("CAN Test Started!\r\n");
+
+#if defined(MASTER)
+    printf("Mode: MASTER\r\n");
+#elif defined(SLAVE)
+    printf("Mode: SLAVE\r\n");
+#endif
+
+  /* USER CODE END 2 */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+   /* USER CODE BEGIN 3 */
+
+#if defined(MASTER)
+    /* ========== 主机模式逻辑 ========== */
+    // 检测按键（PA0），按下时发送 0x11
+    uint8_t current_key = HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin);
+    
+    // 边沿检测：检测到下降沿（按键按下）才触发
+    if (last_key_state == GPIO_PIN_SET && current_key == GPIO_PIN_RESET)
+    {
+        uint8_t tx_data = 0x11;
+        if (CAN_Send_Data(CAN_MASTER_TX_ID, &tx_data, 1) == CAN_SEND_SUCCESS)
+        {
+            printf("Sent: 0x11\r\n");
+        }
+        else
+        {
+            printf("Send failed!\r\n");
+        }
+        HAL_Delay(100);  // 简单防抖
+    }
+    last_key_state = current_key;
+
+    // 检查是否收到从机回复的 0x22
+    if (CAN_Is_New_Data_Received())
+    {
+        uint8_t rx = CAN_Get_Received_Data();
+        if (rx == 0x22)
+        {
+            printf("Received ACK: 0x22\r\n");
+        }
+        CAN_Clear_Received_Flag();
+    }
+
+#elif defined(SLAVE)
+    /* ========== 从机模式逻辑 ========== */
+    // 检查是否收到主机发来的 0x11（在CAN回调中已自动回复）
+    if (CAN_Is_New_Data_Received())
+    {
+        uint8_t rx = CAN_Get_Received_Data();
+        if (rx == 0x11)
+        {
+            // 翻转板载LED（PC13）
+            HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+            printf("Received: 0x11, LED toggled\r\n");
+        }
+        CAN_Clear_Received_Flag();
+    }
+
+#endif
+
+    HAL_Delay(10);  // 主循环轮询间隔
+
   }
   /* USER CODE END 3 */
 }
