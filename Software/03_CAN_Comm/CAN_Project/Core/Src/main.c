@@ -129,7 +129,7 @@ printf("CAN Test Started!\r\n");
 #if defined(MASTER)
     /* ========== 主机模式逻辑 ========== */
     // 检测按键（PA0），按下时发送 0x11
-    uint8_t current_key = HAL_GPIO_ReadPin(KEY_GPIO_Port, KEY_Pin);
+    uint8_t current_key = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0); 
     
     // 边沿检测：检测到下降沿（按键按下）才触发
     if (last_key_state == GPIO_PIN_SET && current_key == GPIO_PIN_RESET)
@@ -167,7 +167,7 @@ printf("CAN Test Started!\r\n");
         if (rx == 0x11)
         {
             // 翻转板载LED（PC13）
-            HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
             printf("Received: 0x11, LED toggled\r\n");
         }
         CAN_Clear_Received_Flag();
@@ -221,7 +221,11 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+int fputc(int ch, FILE *f)  // 重定向printf到串口
+{
+    HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
 /* USER CODE END 4 */
 
 /**
