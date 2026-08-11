@@ -116,14 +116,14 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
-  {HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);  // 每循环一次翻转LED
-    HAL_Delay(100);        
+  {    
     #if defined(MASTER)
     uint8_t current_key = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
     
+    // 检测下降沿：按键按下的瞬间（高->低）
     if (last_key_state == GPIO_PIN_SET && current_key == GPIO_PIN_RESET)
     {
-        // 不管CAN发送成功与否，先强制打印一条消息确认按键被触发
+        // 按键按下时执行发送（只执行一次）
         char press_msg[] = "Key Pressed!\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)press_msg, sizeof(press_msg)-1, HAL_MAX_DELAY);
 
@@ -138,10 +138,21 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
             char fail_msg[] = "Send failed!\r\n";
             HAL_UART_Transmit(&huart1, (uint8_t*)fail_msg, sizeof(fail_msg)-1, HAL_MAX_DELAY);
         }
-        HAL_Delay(100);
+        
+        // 关键：立即更新 last_key_state，防止下一次循环再次触发
+        last_key_state = current_key;
+        
+        // 可选：等待按键完全松开（防止抖动）
+        while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET)
+        {
+            HAL_Delay(50);  // 等待按键释放（低电平保持时等待）
+        }
     }
+    
+    // 在循环末尾更新 last_key_state（放在这里也可以，但必须确保每次循环都更新）
     last_key_state = current_key;
 
+    // 接收检查（保持不变）
     if (CAN_Is_New_Data_Received())
     {
         uint8_t rx = CAN_Get_Received_Data();
@@ -153,8 +164,9 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
         CAN_Clear_Received_Flag();
     }
 
+
     #elif defined(SLAVE)
-    /* 从机逻辑保持不变，但同样把 printf 替换成 HAL_UART_Transmit */
+    /* 从机逻辑 */
     if (CAN_Is_New_Data_Received())
     {
         uint8_t rx = CAN_Get_Received_Data();
