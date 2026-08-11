@@ -60,7 +60,7 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 // 烧录主机取消注释下面这行，烧录从机注释掉它
 #define MASTER
-// #define SLAVE
+ //#define SLAVE
 
 uint8_t last_key_state = 0;
 /* USER CODE END 0 */
@@ -97,10 +97,10 @@ int main(void)
   MX_CAN_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+ 
 // 初始化CAN（启动、过滤器、中断）
 CAN_Init();
-
-// 串口打印启动信息
+ // 串口打印启动信息
 char msg[] = "CAN Test Started!\r\n";
 HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
 
@@ -116,53 +116,59 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
-  {
+  {HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);  // 每循环一次翻转LED
+    HAL_Delay(100);        
     #if defined(MASTER)
-    /* ========== 主机模式 ========== */
-    uint8_t current_key = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);   // 按键 PA0
+    uint8_t current_key = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
     
-    // 检测下降沿（按下）
     if (last_key_state == GPIO_PIN_SET && current_key == GPIO_PIN_RESET)
     {
+        // 不管CAN发送成功与否，先强制打印一条消息确认按键被触发
+        char press_msg[] = "Key Pressed!\r\n";
+        HAL_UART_Transmit(&huart1, (uint8_t*)press_msg, sizeof(press_msg)-1, HAL_MAX_DELAY);
+
         uint8_t tx_data = 0x11;
         if (CAN_Send_Data(CAN_MASTER_TX_ID, &tx_data, 1) == CAN_SEND_SUCCESS)
         {
-            printf("Sent: 0x11\r\n");
+            char sent_msg[] = "Sent: 0x11\r\n";
+            HAL_UART_Transmit(&huart1, (uint8_t*)sent_msg, sizeof(sent_msg)-1, HAL_MAX_DELAY);
         }
         else
         {
-            printf("Send failed!\r\n");
+            char fail_msg[] = "Send failed!\r\n";
+            HAL_UART_Transmit(&huart1, (uint8_t*)fail_msg, sizeof(fail_msg)-1, HAL_MAX_DELAY);
         }
-        HAL_Delay(100);  // 防抖
+        HAL_Delay(100);
     }
     last_key_state = current_key;
 
-    // 检查是否收到从机回复的 0x22
     if (CAN_Is_New_Data_Received())
     {
         uint8_t rx = CAN_Get_Received_Data();
         if (rx == 0x22)
         {
-            printf("Received ACK: 0x22\r\n");
+            char ack_msg[] = "Received ACK: 0x22\r\n";
+            HAL_UART_Transmit(&huart1, (uint8_t*)ack_msg, sizeof(ack_msg)-1, HAL_MAX_DELAY);
         }
         CAN_Clear_Received_Flag();
     }
 
     #elif defined(SLAVE)
-    /* ========== 从机模式 ========== */
+    /* 从机逻辑保持不变，但同样把 printf 替换成 HAL_UART_Transmit */
     if (CAN_Is_New_Data_Received())
     {
         uint8_t rx = CAN_Get_Received_Data();
         if (rx == 0x11)
         {
-            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);   // 翻转板载 LED（PC13）
-            printf("Received: 0x11, LED toggled\r\n");
+            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+            char rx_msg[] = "Received: 0x11, LED toggled\r\n";
+            HAL_UART_Transmit(&huart1, (uint8_t*)rx_msg, sizeof(rx_msg)-1, HAL_MAX_DELAY);
         }
         CAN_Clear_Received_Flag();
     }
 #endif
 
-    HAL_Delay(10);   // 轮询间隔
+    HAL_Delay(10);  // 轮询间隔
 
     /* USER CODE END WHILE */
 
