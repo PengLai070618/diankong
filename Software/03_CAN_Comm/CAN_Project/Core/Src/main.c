@@ -59,10 +59,10 @@ void SystemClock_Config(void);
 
 /* ========== 定义主从模式切换宏 ========== */
 // 烧录主机板时，取消下面这行的注释
-// #define MASTER
+#define MASTER
 
 // 烧录从机板时，取消下面这行的注释
-#define SLAVE
+//#define SLAVE
 
 /* ========== 包含自定义头文件 ========== */
 #include "can.h"
@@ -105,78 +105,29 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-/* 1. 调用CAN自定义初始化（启动+过滤器+中断） */
-CAN_Init();
-
-/* 2. 打印启动信息（通过串口） */
-printf("CAN Test Started!\r\n");
-
-#if defined(MASTER)
-    printf("Mode: MASTER\r\n");
-#elif defined(SLAVE)
-    printf("Mode: SLAVE\r\n");
-#endif
+/* ========== 暂时屏蔽CAN和串口，专注LED测试 ========== */
+// CAN_Init();
+// printf("CAN Test Started!\r\n");
+// #if defined(MASTER)
+//     printf("Mode: MASTER\r\n");
+// #elif defined(SLAVE)
+//     printf("Mode: SLAVE\r\n");
+// #endif
 
   /* USER CODE END 2 */
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
 
-   /* USER CODE BEGIN 3 */
-
-#if defined(MASTER)
-    /* ========== 主机模式逻辑 ========== */
-    // 检测按键（PA0），按下时发送 0x11
-    uint8_t current_key = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0); 
-    
-    // 边沿检测：检测到下降沿（按键按下）才触发
-    if (last_key_state == GPIO_PIN_SET && current_key == GPIO_PIN_RESET)
-    {
-        uint8_t tx_data = 0x11;
-        if (CAN_Send_Data(CAN_MASTER_TX_ID, &tx_data, 1) == CAN_SEND_SUCCESS)
-        {
-            printf("Sent: 0x11\r\n");
-        }
-        else
-        {
-            printf("Send failed!\r\n");
-        }
-        HAL_Delay(100);  // 简单防抖
-    }
-    last_key_state = current_key;
-
-    // 检查是否收到从机回复的 0x22
-    if (CAN_Is_New_Data_Received())
-    {
-        uint8_t rx = CAN_Get_Received_Data();
-        if (rx == 0x22)
-        {
-            printf("Received ACK: 0x22\r\n");
-        }
-        CAN_Clear_Received_Flag();
-    }
-
-#elif defined(SLAVE)
-    /* ========== 从机模式逻辑 ========== */
-    // 检查是否收到主机发来的 0x11（在CAN回调中已自动回复）
-    if (CAN_Is_New_Data_Received())
-    {
-        uint8_t rx = CAN_Get_Received_Data();
-        if (rx == 0x11)
-        {
-            // 翻转板载LED（PC13）
-            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-            printf("Received: 0x11, LED toggled\r\n");
-        }
-        CAN_Clear_Received_Flag();
-    }
-
-#endif
-
-    HAL_Delay(10);  // 主循环轮询间隔
-
+    /* USER CODE BEGIN 3 */
+    /* ========== 外部LED闪烁测试（PA5） ========== */
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);   // 输出低电平 → LED亮（若负极接PA5，正极接3.3V）
+    for (volatile int i = 0; i < 1000000; i++);              // 粗延时
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);     // 输出高电平 → LED灭
+    for (volatile int i = 0; i < 1000000; i++);
   }
   /* USER CODE END 3 */
 }
@@ -193,12 +144,11 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -214,7 +164,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }
