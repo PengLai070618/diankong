@@ -59,8 +59,8 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 // 烧录主机取消注释下面这行，烧录从机注释掉它
-#define MASTER
- //#define SLAVE
+//#define MASTER
+ #define SLAVE
 
 uint8_t last_key_state = 0;
 /* USER CODE END 0 */
@@ -98,7 +98,7 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
  
-// 初始化CAN（启动、过滤器、中断）
+// 初始化CAN
 CAN_Init();
  // 串口打印启动信息
 char msg[] = "CAN Test Started!\r\n";
@@ -123,7 +123,7 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
     // 检测下降沿：按键按下的瞬间（高->低）
     if (last_key_state == GPIO_PIN_SET && current_key == GPIO_PIN_RESET)
     {
-        // 按键按下时执行发送（只执行一次）
+        // 按键按下时执行发送
         char press_msg[] = "Key Pressed!\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)press_msg, sizeof(press_msg)-1, HAL_MAX_DELAY);
 
@@ -139,17 +139,17 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
             HAL_UART_Transmit(&huart1, (uint8_t*)fail_msg, sizeof(fail_msg)-1, HAL_MAX_DELAY);
         }
         
-        // 关键：立即更新 last_key_state，防止下一次循环再次触发
+        // 更新 last_key_state
         last_key_state = current_key;
         
-        // 可选：等待按键完全松开（防止抖动）
+        // 等待按键完全松开（防止抖动）
         while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET)
         {
             HAL_Delay(50);  // 等待按键释放（低电平保持时等待）
         }
     }
     
-    // 在循环末尾更新 last_key_state（放在这里也可以，但必须确保每次循环都更新）
+    // 在循环末尾更新 last_key_state
     last_key_state = current_key;
 
     // 接收检查（保持不变）
@@ -167,7 +167,7 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
 
     #elif defined(SLAVE)
     /* 从机逻辑 */
-    if (CAN_Is_New_Data_Received())
+     if (CAN_Is_New_Data_Received())
     {
         uint8_t rx = CAN_Get_Received_Data();
         if (rx == 0x11)
@@ -175,12 +175,25 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
             HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
             char rx_msg[] = "Received: 0x11, LED toggled\r\n";
             HAL_UART_Transmit(&huart1, (uint8_t*)rx_msg, sizeof(rx_msg)-1, HAL_MAX_DELAY);
+
+            // 回复 0x22 
+            uint8_t reply = 0x22;
+            if (CAN_Send_Data(CAN_SLAVE_TX_ID, &reply, 1) == CAN_SEND_SUCCESS)
+            {
+                char ack_sent[] = "Reply 0x22 sent\r\n";
+                HAL_UART_Transmit(&huart1, (uint8_t*)ack_sent, sizeof(ack_sent)-1, HAL_MAX_DELAY);
+            }
+            else
+            {
+                char ack_fail[] = "Reply 0x22 failed\r\n";
+                HAL_UART_Transmit(&huart1, (uint8_t*)ack_fail, sizeof(ack_fail)-1, HAL_MAX_DELAY);
+            }
         }
         CAN_Clear_Received_Flag();
     }
 #endif
 
-    HAL_Delay(10);  // 轮询间隔
+    HAL_Delay(1000);  // 轮询间隔
 
     /* USER CODE END WHILE */
 
