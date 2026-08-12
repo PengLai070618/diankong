@@ -123,10 +123,7 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
     // 检测下降沿：按键按下的瞬间（高->低）
     if (last_key_state == GPIO_PIN_SET && current_key == GPIO_PIN_RESET)
     {
-        // 按键按下时执行发送
-        char press_msg[] = "Key Pressed!\r\n";
-        HAL_UART_Transmit(&huart1, (uint8_t*)press_msg, sizeof(press_msg)-1, HAL_MAX_DELAY);
-
+        
         uint8_t tx_data = 0x11;
         if (CAN_Send_Data(CAN_MASTER_TX_ID, &tx_data, 1) == CAN_SEND_SUCCESS)
         {
@@ -193,7 +190,7 @@ HAL_UART_Transmit(&huart1, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
     }
 #endif
 
-    HAL_Delay(1000);  // 轮询间隔
+    HAL_Delay(100);  // 轮询间隔
 
     /* USER CODE END WHILE */
 
@@ -241,11 +238,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-int fputc(int ch, FILE *f)
-{
-    HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
-    return ch;
-}
+
 /* USER CODE END 4 */
 
 /**
