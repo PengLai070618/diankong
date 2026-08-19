@@ -60,21 +60,60 @@ void MX_FREERTOS_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 #include <string.h>
-
-// 电机测试：正转50%占空比
-void Motor_Test(void)
+#include <stdio.h>
+/* ===== 电机控制函数 ===== */
+void Motor_Forward(uint16_t pwm_value)
 {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);   // AIN1
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET); // AIN2
-    __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_1, 3600);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);   // AIN1 = 高
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET); // AIN2 = 低
+    __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_1, pwm_value);
+}
+
+void Motor_Reverse(uint16_t pwm_value)
+{
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET); // AIN1 = 低
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);   // AIN2 = 高
+    __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_1, pwm_value);
 }
 
 void Motor_Stop(void)
 {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
     __HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_1, 0);
 }
+
+/* ===== 编码器读取函数 ===== */
+int32_t Encoder_GetCount(void)
+{
+    return (int32_t)__HAL_TIM_GET_COUNTER(&htim2);
+}
+
+void Encoder_Reset(void)
+{
+    __HAL_TIM_SET_COUNTER(&htim2, 0);
+}
+
+/* ===== ADC读取函数 ===== */
+uint16_t ADC_Read(void)
+{
+    HAL_ADC_Start(&hadc1);
+    if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK)
+    {
+        return HAL_ADC_GetValue(&hadc1);
+    }
+    return 0;
+}
+
+/* ===== 串口发送函数（封装） ===== */
+void UART_Send_String(char *str)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
+}
+
+/* ===== FreeRTOS 任务函数声明 ===== */
+void Task_ADC(void *argument);
+void Task_PID(void *argument);
 /* USER CODE END 0 */
 
 /**
@@ -111,6 +150,25 @@ int main(void)
   MX_TIM3_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+/* 启动 PWM 定时器 */
+HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+
+/* 启动编码器定时器（编码器模式不需要额外启动函数，但需要确保计数使能） */
+// TIM2 已由 CubeMX 初始化，直接读取即可
+
+/* STBY 使能（如果 STBY 接的是 GPIO，需要拉高） */
+// HAL_GPIO_WritePin(STBY_GPIO_Port, STBY_Pin, GPIO_PIN_SET);
+
+/* 打印启动信息 */
+char msg[] = "Motor Control Started!\r\n";
+UART_Send_String(msg);
+
+/* 创建 FreeRTOS 任务 */
+osThreadAttr_t attr_ADC = { .name = "TaskADC", .stack_size = 256, .priority = osPriorityNormal };
+osThreadAttr_t attr_PID = { .name = "TaskPID", .stack_size = 256, .priority = osPriorityHigh };
+
+osThreadNew(Task_ADC, NULL, &attr_ADC);
+osThreadNew(Task_PID, NULL, &attr_PID);
 
   /* USER CODE END 2 */
 
@@ -127,6 +185,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -180,6 +239,35 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* ===== ADC 读取任务（每50ms执行一次） ===== */
+void Task_ADC(void *argument)
+{
+    for(;;)
+    {
+        uint16_t adc_value = ADC_Read();
+        
+        char buf[30];
+        sprintf(buf, "ADC: %d\r\n", adc_value);
+        UART_Send_String(buf);
+        
+        osDelay(50);  // 50ms 周期
+    }
+}
+
+/* ===== PID 控制任务（每10ms执行一次） ===== */
+void Task_PID(void *argument)
+{
+    for(;;)
+    {
+        int32_t encoder_count = Encoder_GetCount();
+        
+        char buf[30];
+        sprintf(buf, "ENC: %ld\r\n", encoder_count);
+        UART_Send_String(buf);
+        
+        osDelay(10);  // 10ms 周期
+    }
+}
 
 /* USER CODE END 4 */
 
