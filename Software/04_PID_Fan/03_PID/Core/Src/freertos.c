@@ -58,14 +58,14 @@ const osThreadAttr_t defaultTask_attributes = {
 osThreadId_t Task_ADCHandle;
 const osThreadAttr_t Task_ADC_attributes = {
   .name = "Task_ADC",
-  .stack_size = 128 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for Task_PID */
 osThreadId_t Task_PIDHandle;
 const osThreadAttr_t Task_PID_attributes = {
   .name = "Task_PID",
-  .stack_size = 128 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 

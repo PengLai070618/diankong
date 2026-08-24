@@ -239,7 +239,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-/* ===== ADC 读取任务（每50ms执行一次） ===== */
+/* ===== ADC 读取任务（每100ms执行一次） ===== */
 void Task_ADC(void *argument)
 {
     for(;;)
@@ -248,27 +248,90 @@ void Task_ADC(void *argument)
         
         char buf[30];
         sprintf(buf, "ADC: %d\r\n", adc_value);
-        UART_Send_String(buf);
+        HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
         
-        osDelay(50);  // 50ms 周期
+        osDelay(100);
     }
 }
 
-/* ===== PID 控制任务（每10ms执行一次） ===== */
+/* ===== PID 控制任务（每100ms执行一次） ===== */
 void Task_PID(void *argument)
 {
+    int test_counter = 0;
+    char buf[80];
+    char num_buf[10];
+    
     for(;;)
     {
+        test_counter++;
+        
+        // 1. 读取 ADC
+        uint16_t adc_value = ADC_Read();
+        
+        // 2. 读取编码器
         int32_t encoder_count = Encoder_GetCount();
         
-        char buf[30];
-        sprintf(buf, "ENC: %ld\r\n", encoder_count);
-        UART_Send_String(buf);
+        // 3. 组装字符串: "T:123 A:2048 E:4567\r\n"
+        strcpy(buf, "T:");
+        int num = test_counter;
+        int idx = 0;
+        char temp[10];
+        if (num == 0) { temp[idx++] = '0'; }
+        else {
+            int temp_idx = 0;
+            while (num > 0) {
+                temp[temp_idx++] = '0' + (num % 10);
+                num /= 10;
+            }
+            for (int i = temp_idx - 1; i >= 0; i--) {
+                temp[idx++] = temp[i];
+            }
+        }
+        temp[idx] = '\0';
+        strcat(buf, temp);
         
-        osDelay(10);  // 10ms 周期
+        strcat(buf, " A:");
+        // 同样方法转换 adc_value
+        num = adc_value;
+        idx = 0;
+        if (num == 0) { temp[idx++] = '0'; }
+        else {
+            int temp_idx = 0;
+            while (num > 0) {
+                temp[temp_idx++] = '0' + (num % 10);
+                num /= 10;
+            }
+            for (int i = temp_idx - 1; i >= 0; i--) {
+                temp[idx++] = temp[i];
+            }
+        }
+        temp[idx] = '\0';
+        strcat(buf, temp);
+        
+        strcat(buf, " E:");
+        // 转换 encoder_count（可能是负数，先按正数处理）
+        num = encoder_count > 0 ? encoder_count : -encoder_count;
+        idx = 0;
+        if (num == 0) { temp[idx++] = '0'; }
+        else {
+            int temp_idx = 0;
+            while (num > 0) {
+                temp[temp_idx++] = '0' + (num % 10);
+                num /= 10;
+            }
+            for (int i = temp_idx - 1; i >= 0; i--) {
+                temp[idx++] = temp[i];
+            }
+        }
+        temp[idx] = '\0';
+        strcat(buf, temp);
+        strcat(buf, "\r\n");
+        
+        HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
+        
+        osDelay(100);
     }
 }
-
 /* USER CODE END 4 */
 
 /**
