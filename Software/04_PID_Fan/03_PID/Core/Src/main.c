@@ -219,8 +219,8 @@ char msg[] = "Motor Control Started!\r\n";
 UART_Send_String(msg);
 
 /* 创建 FreeRTOS 任务 */
-osThreadAttr_t attr_ADC = { .name = "TaskADC", .stack_size = 256, .priority = osPriorityNormal };
-osThreadAttr_t attr_PID = { .name = "TaskPID", .stack_size = 256, .priority = osPriorityHigh };
+osThreadAttr_t attr_ADC = { .name = "TaskADC", .stack_size = 1024, .priority = osPriorityNormal };
+osThreadAttr_t attr_PID = { .name = "TaskPID", .stack_size = 1024, .priority = osPriorityHigh };
 
 osThreadNew(Task_ADC, NULL, &attr_ADC);
 osThreadNew(Task_PID, NULL, &attr_PID);
@@ -301,9 +301,9 @@ void Task_ADC(void *argument)
     {
         uint16_t adc_value = ADC_Read();
         
-        char buf[30];
-        sprintf(buf, "ADC: %d\r\n", adc_value);
-        HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
+        //char buf[30];
+        //sprintf(buf, "ADC: %d\r\n", adc_value);
+        //HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
         
         osDelay(100);
     }
@@ -312,21 +312,20 @@ void Task_ADC(void *argument)
 /* ===== PID 控制任务（每100ms执行一次） ===== */
 void Task_PID(void *argument)
 {
-    // 定义 PID 句柄
     PID_Handle_t pid_speed;
-    PID_Init(&pid_speed, 0.5f, 0.1f, 0.0f, 1000.0f);  // 初始参数，后续调优
+    PID_Init(&pid_speed, 0.5f, 0.1f, 0.0f, 1000.0f);
     
-    // 速度转换常数
-   float speed_scale = 1.0f;
+    float speed_scale = 1.0f;
+    int32_t last_encoder = 0;
     
     for(;;)
     {
-        // 1. 读取电位器 → 目标速度（0~4095 映射到 0~1000）
+        // 1. 读取 ADC → 目标速度
         uint16_t adc_value = ADC_Read();
+        int32_t encoder_count = Encoder_GetCount();
         float target_speed = (float)adc_value / 4095.0f * 1000.0f;
         
-        // 2. 读取编码器 → 实际速度（用差分方式计算）
-        static int32_t last_encoder = 0;
+        // 2. 读取编码器 → 实际速度
         int32_t current_encoder = Encoder_GetCount();
         float current_speed = (float)(current_encoder - last_encoder) * speed_scale;
         last_encoder = current_encoder;
@@ -343,12 +342,12 @@ void Task_PID(void *argument)
             Motor_Stop();
         }
         
-        // 5. 发送到 VOFA+（用于显示曲线）
-        char buf[80];
-        sprintf(buf, "%.1f,%.1f\r\n", target_speed, current_speed);
-        HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
+        // 5. 发送到 VOFA+
+         char buf[60];
+        sprintf(buf, "A:%4d E:%4ld\r\n", adc_value, encoder_count);
+        HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), 100);
         
-        osDelay(10);  // 10ms 控制周期
+        osDelay(50);  // 50ms 发送一次
     }
 }
 /* USER CODE END 4 */
