@@ -153,8 +153,8 @@ int main(void)
 /* 启动 PWM 定时器 */
 HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
-/* 启动编码器定时器（编码器模式不需要额外启动函数，但需要确保计数使能） */
-// TIM2 已由 CubeMX 初始化，直接读取即可
+/* 启动编码器定时器*/
+HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
 
 /* STBY 使能（如果 STBY 接的是 GPIO，需要拉高） */
 // HAL_GPIO_WritePin(STBY_GPIO_Port, STBY_Pin, GPIO_PIN_SET);
@@ -271,7 +271,7 @@ void Task_PID(void *argument)
         // 2. 读取编码器
         int32_t encoder_count = Encoder_GetCount();
         
-        // 3. 组装字符串: "T:123 A:2048 E:4567\r\n"
+        // 3. 组装字符串
         strcpy(buf, "T:");
         int num = test_counter;
         int idx = 0;
@@ -309,7 +309,7 @@ void Task_PID(void *argument)
         strcat(buf, temp);
         
         strcat(buf, " E:");
-        // 转换 encoder_count（可能是负数，先按正数处理）
+        // 转换 encoder_count
         num = encoder_count > 0 ? encoder_count : -encoder_count;
         idx = 0;
         if (num == 0) { temp[idx++] = '0'; }
