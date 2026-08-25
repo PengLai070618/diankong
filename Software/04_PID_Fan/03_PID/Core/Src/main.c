@@ -114,6 +114,61 @@ void UART_Send_String(char *str)
 /* ===== FreeRTOS 任务函数声明 ===== */
 void Task_ADC(void *argument);
 void Task_PID(void *argument);
+
+/* ===== PID 结构体 ===== */
+typedef struct {
+    float Kp;
+    float Ki;
+    float Kd;
+    float target;
+    float feedback;
+    float last_error;
+    float prev_error;
+    float integral;
+    float output;
+    float output_limit;
+} PID_Handle_t;
+
+/* ===== PID 初始化函数 ===== */
+void PID_Init(PID_Handle_t *pid, float Kp, float Ki, float Kd, float output_limit)
+{
+    pid->Kp = Kp;
+    pid->Ki = Ki;
+    pid->Kd = Kd;
+    pid->target = 0;
+    pid->feedback = 0;
+    pid->last_error = 0;
+    pid->prev_error = 0;
+    pid->integral = 0;
+    pid->output = 0;
+    pid->output_limit = output_limit;
+}
+
+/* ===== 增量式 PID 计算函数 ===== */
+float PID_Update(PID_Handle_t *pid, float target, float feedback)
+{
+    pid->target = target;
+    pid->feedback = feedback;
+    
+    float error = target - feedback;
+    
+    // 增量式 PID
+    float delta_u = pid->Kp * (error - pid->last_error) 
+                  + pid->Ki * error 
+                  + pid->Kd * (error - 2 * pid->last_error + pid->prev_error);
+    
+    pid->prev_error = pid->last_error;
+    pid->last_error = error;
+    
+    // 累加输出并限幅
+    pid->output += delta_u;
+    if (pid->output > pid->output_limit) pid->output = pid->output_limit;
+    if (pid->output < -pid->output_limit) pid->output = -pid->output_limit;
+    
+    return pid->output;
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -257,79 +312,43 @@ void Task_ADC(void *argument)
 /* ===== PID 控制任务（每100ms执行一次） ===== */
 void Task_PID(void *argument)
 {
-    int test_counter = 0;
-    char buf[80];
-    char num_buf[10];
+    // 定义 PID 句柄
+    PID_Handle_t pid_speed;
+    PID_Init(&pid_speed, 0.5f, 0.1f, 0.0f, 1000.0f);  // 初始参数，后续调优
+    
+    // 速度转换常数
+   float speed_scale = 1.0f;
     
     for(;;)
     {
-        test_counter++;
-        
-        // 1. 读取 ADC
+        // 1. 读取电位器 → 目标速度（0~4095 映射到 0~1000）
         uint16_t adc_value = ADC_Read();
+        float target_speed = (float)adc_value / 4095.0f * 1000.0f;
         
-        // 2. 读取编码器
-        int32_t encoder_count = Encoder_GetCount();
+        // 2. 读取编码器 → 实际速度（用差分方式计算）
+        static int32_t last_encoder = 0;
+        int32_t current_encoder = Encoder_GetCount();
+        float current_speed = (float)(current_encoder - last_encoder) * speed_scale;
+        last_encoder = current_encoder;
         
-        // 3. 组装字符串
-        strcpy(buf, "T:");
-        int num = test_counter;
-        int idx = 0;
-        char temp[10];
-        if (num == 0) { temp[idx++] = '0'; }
-        else {
-            int temp_idx = 0;
-            while (num > 0) {
-                temp[temp_idx++] = '0' + (num % 10);
-                num /= 10;
-            }
-            for (int i = temp_idx - 1; i >= 0; i--) {
-                temp[idx++] = temp[i];
-            }
+        // 3. PID 计算
+        float pid_output = PID_Update(&pid_speed, target_speed, current_speed);
+        
+        // 4. 应用到电机
+        if (pid_output > 0) {
+            Motor_Forward((uint16_t)(pid_output > 1000 ? 1000 : pid_output));
+        } else if (pid_output < 0) {
+            Motor_Reverse((uint16_t)(-pid_output > 1000 ? 1000 : -pid_output));
+        } else {
+            Motor_Stop();
         }
-        temp[idx] = '\0';
-        strcat(buf, temp);
         
-        strcat(buf, " A:");
-        // 同样方法转换 adc_value
-        num = adc_value;
-        idx = 0;
-        if (num == 0) { temp[idx++] = '0'; }
-        else {
-            int temp_idx = 0;
-            while (num > 0) {
-                temp[temp_idx++] = '0' + (num % 10);
-                num /= 10;
-            }
-            for (int i = temp_idx - 1; i >= 0; i--) {
-                temp[idx++] = temp[i];
-            }
-        }
-        temp[idx] = '\0';
-        strcat(buf, temp);
-        
-        strcat(buf, " E:");
-        // 转换 encoder_count
-        num = encoder_count > 0 ? encoder_count : -encoder_count;
-        idx = 0;
-        if (num == 0) { temp[idx++] = '0'; }
-        else {
-            int temp_idx = 0;
-            while (num > 0) {
-                temp[temp_idx++] = '0' + (num % 10);
-                num /= 10;
-            }
-            for (int i = temp_idx - 1; i >= 0; i--) {
-                temp[idx++] = temp[i];
-            }
-        }
-        temp[idx] = '\0';
-        strcat(buf, temp);
-        strcat(buf, "\r\n");
-        
+        // 5. 发送到 VOFA+（用于显示曲线）
+        char buf[80];
+        sprintf(buf, "%.1f,%.1f\r\n", target_speed, current_speed);
         HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), HAL_MAX_DELAY);
         
-        osDelay(100);
+        osDelay(10);  // 10ms 控制周期
     }
 }
 /* USER CODE END 4 */
