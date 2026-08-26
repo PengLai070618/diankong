@@ -23,7 +23,6 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -320,20 +319,20 @@ void Task_PID(void *argument)
     
     for(;;)
     {
-        // 1. 读取 ADC → 目标速度
+        // 1. 读取 ADC
         uint16_t adc_value = ADC_Read();
-        int32_t encoder_count = Encoder_GetCount();
         float target_speed = (float)adc_value / 4095.0f * 1000.0f;
         
-        // 2. 读取编码器 → 实际速度
+        // 2. 读取编码器，计算速度增量
         int32_t current_encoder = Encoder_GetCount();
-        float current_speed = (float)(current_encoder - last_encoder) * speed_scale;
+        int32_t speed_diff = current_encoder - last_encoder;  // 速度增量
         last_encoder = current_encoder;
+        float current_speed = (float)speed_diff * speed_scale;
         
         // 3. PID 计算
         float pid_output = PID_Update(&pid_speed, target_speed, current_speed);
         
-        // 4. 应用到电机
+        // 4. 电机控制
         if (pid_output > 0) {
             Motor_Forward((uint16_t)(pid_output > 1000 ? 1000 : pid_output));
         } else if (pid_output < 0) {
@@ -342,12 +341,13 @@ void Task_PID(void *argument)
             Motor_Stop();
         }
         
-        // 5. 发送到 VOFA+
-         char buf[60];
-        sprintf(buf, "A:%4d E:%4ld\r\n", adc_value, encoder_count);
+        // 5. 串口打印
+        char buf[80];
+        sprintf(buf, "ADC:%4d SPD:%4ld T:%4.0f C:%4.0f\r\n", 
+                adc_value, (long)speed_diff, target_speed, current_speed);
         HAL_UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf), 100);
         
-        osDelay(50);  // 50ms 发送一次
+        osDelay(50);
     }
 }
 /* USER CODE END 4 */
